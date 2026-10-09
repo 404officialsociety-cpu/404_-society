@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>404 Society · Admin</title>
+<style>
+:root{color-scheme:light;--bg:#f6f6f4;--fg:#151515;--muted:#707070;--line:#e4e4e0;--card:#fff;--accent:#111}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 Inter,system-ui,Arial,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+.brand{font-weight:800;letter-spacing:.18em}.pill{font-size:11px;color:var(--muted);letter-spacing:.08em}
+main{max-width:1120px;margin:auto;padding:22px 16px 60px}.notice{padding:12px 14px;background:#fff8df;border:1px solid #eadba5;border-radius:10px;margin-bottom:16px}
+.tabs{display:flex;gap:8px;overflow:auto;margin:16px 0}.tab,button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:10px 13px;font:inherit;cursor:pointer;white-space:nowrap}.tab.active,button.primary{background:#111;color:#fff;border-color:#111}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}.stat b{display:block;font-size:24px;margin-top:5px}
+input,textarea,select{width:100%;padding:11px;border:1px solid #d7d7d2;border-radius:8px;background:#fff;font:inherit;margin:5px 0 12px}label{font-size:12px;color:var(--muted)}h1{font-size:22px;margin:4px 0}h2{font-size:16px;margin:0 0 12px}.hidden{display:none!important}.muted{color:var(--muted)}.error{color:#a32020}.success{color:#176c3a}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;min-width:650px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid var(--line);font-size:13px}th{color:var(--muted);font-weight:600}.small{font-size:12px}.danger{color:#a32020}.foot{color:var(--muted);font-size:12px;margin-top:18px}
+@media(max-width:680px){.grid{grid-template-columns:1fr}.row>*{flex-basis:100%}header{padding:14px}.panel{padding:13px}}
+</style></head>
+<body>
+<header><div><div class="brand">404 SOCIETY</div><div class="pill">ADMIN CONSOLE</div></div><span id="connection" class="pill">NOT CONNECTED</span></header>
+<main>
+<div class="notice"><b>Setup template:</b> This page is only the interface. It requires protected admin API routes in your Cloudflare Worker before product/order management will work. Do not enter or store payment/Qikink secrets here.</div>
+<section id="login" class="panel">
+<h1>Admin access</h1><p class="muted">Sign in with the administrator account configured in your Worker.</p>
+<p><button class="primary" id="loginBtn">Sign in with Google</button></p>
+<p class="small muted">This button uses the existing Google sign-in route. The Worker must additionally enforce an admin email allowlist for every /api/admin/* request.</p>
+</section>
+<section id="app" class="hidden">
+<div class="grid">
+<div class="stat">Products<b id="productCount">—</b></div><div class="stat">Orders shown<b id="orderCount">—</b></div><div class="stat">Fulfillment errors<b id="errorCount">—</b></div>
+</div>
+<div class="tabs">
+<button class="tab active" data-tab="products">Products & SKUs</button><button class="tab" data-tab="orders">Orders</button><button class="tab" data-tab="help">Setup notes</button>
+</div>
+<section id="products" class="panel">
+<h2>Product catalog</h2><p class="muted small">Products are loaded from GET /api/admin/products. SKU should be mapped per size/colour variant.</p>
+<div class="row"><button class="primary" id="newProduct">Add product</button><button id="reloadProducts">Refresh products</button></div>
+<div id="productForm" class="hidden">
+<hr><h2 id="formTitle">Add product</h2>
+<input id="pId" type="hidden">
+<label>Product name</label><input id="pName" placeholder="ESSENTIAL TEE">
+<label>Category</label><input id="pCategory" placeholder="T-SHIRTS">
+<label>Description</label><textarea id="pDescription" rows="2" placeholder="Product description"></textarea>
+<div class="row"><div><label>Price (INR)</label><input id="pPrice" type="number" min="1" step="1" placeholder="799"></div><div><label>Image URL (https)</label><input id="pImage" type="url" placeholder="https://..."></div></div>
+<label>Variants (one per line: SIZE|COLOUR|QIKINK_SKU)</label><textarea id="pVariants" rows="5" placeholder="M|Black|EXACT-QIKINK-SKU"></textarea>
+<div class="row"><button class="primary" id="saveProduct">Save product</button><button id="cancelProduct">Cancel</button></div>
+<p id="productMessage" class="small"></p>
+</div>
+<div id="productsList" class="scroll"><p class="muted">Connect the admin API, then tap Refresh products.</p></div>
+</section>
+<section id="orders" class="panel hidden">
+<h2>Orders</h2><p class="muted small">Loads GET /api/admin/orders. Payment and fulfillment statuses should be set by the server, not manually trusted from this page.</p>
+<div class="row"><button class="primary" id="reloadOrders">Refresh orders</button><input id="orderSearch" placeholder="Filter by order ID or status"></div>
+<div id="ordersList" class="scroll"><p class="muted">Tap Refresh orders after configuring the admin API.</p></div>
+</section>
+<section id="help" class="panel hidden">
+<h2>Worker API contract</h2>
+<p>This interface expects these authenticated routes to be implemented in <code>src/worker.js</code>:</p>
+<ul><li><code>GET /api/admin/me</code> — verify the signed-in user is an admin</li><li><code>GET /api/admin/products</code> — list products and variants</li><li><code>POST /api/admin/products</code> — create product</li><li><code>PUT /api/admin/products/:id</code> — update product</li><li><code>DELETE /api/admin/products/:id</code> — deactivate product</li><li><code>GET /api/admin/orders</code> — list orders</li><li><code>POST /api/admin/orders/:id/retry</code> — safely retry eligible Qikink fulfillment</li></ul>
+<p><b>Security:</b> Enforce the admin allowlist server-side on every route, validate all input, use parameterized D1 queries, preserve historical order-item snapshots, and make fulfillment retries idempotent. Never expose secrets to browser code.</p>
+<p><b>Database:</b> Apply a versioned D1 migration after backing up the current database. Do not drop the existing orders or customers tables.</p>
+</section>
+</section>
+<div id="message" role="status" class="foot"></div>
+<p class="foot">404 Society · Wear Your Identity · Admin starter template</p>
+</main>
+<script>
+const $=s=>document.querySelector(s);let products=[],orders=[];
+async function api(path,opts={}){const r=await fetch(path,{credentials:'same-origin',...opts,headers:{'content-type':'application/json',...(opts.headers||{})}});const d=await r.json().catch(()=>({error:'Unexpected server response'}));if(!r.ok)throw Error(d.error||`Request failed (${r.status})`);return d}
+function msg(s,kind=''){const el=$('#message');el.className='foot '+kind;el.textContent=s}
+function showTab(name){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));['products','orders','help'].forEach(id=>$('#'+id).classList.toggle('hidden',id!==name))}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+$('#loginBtn').onclick=()=>location.href='/api/auth/google?next=account';
+async function init(){try{await api('/api/admin/me');$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#connection').textContent='CONNECTED';$('#connection').className='pill success';await Promise.all([loadProducts(),loadOrders()])}catch(e){$('#connection').textContent='ADMIN API NOT READY';msg(e.message,'error')}}
+function variantText(p){return (p.variants||[]).map(v=>`${v.size||''} ${v.colour||v.color||''}: ${v.sku||''}`).join('<br>')}
+async function loadProducts(){try{const d=await api('/api/admin/products');products=d.products||[];$('#productCount').textContent=products.length;$('#productsList').innerHTML=products.length?`<table><thead><tr><th>Product</th><th>Price</th><th>Variants / SKU</th><th>Action</th></tr></thead><tbody>${products.map(p=>`<tr><td><b>${esc(p.name)}</b><br><span class="muted small">${esc(p.id)}</span></td><td>₹${Number(p.price||0).toLocaleString('en-IN')}</td><td>${variantText(p)}</td><td><button data-edit="${esc(p.id)}">Edit</button> <button class="danger" data-delete="${esc(p.id)}">Deactivate</button></td></tr>`).join('')}</tbody></table>`:'<p class="muted">No products yet.</p>';$('#productsList').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editProduct(b.dataset.edit));$('#productsList').querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deleteProduct(b.dataset.delete));}catch(e){$('#productsList').innerHTML=`<p class="error">${esc(e.message)}</p>`}}
+async function loadOrders(){try{const d=await api('/api/admin/orders');orders=d.orders||[];$('#orderCount').textContent=orders.length;$('#errorCount').textContent=orders.filter(o=>o.status==='PAID'&&o.last_error).length;renderOrders()}catch(e){$('#ordersList').innerHTML=`<p class="error">${esc(e.message)}</p>`}}
+function renderOrders(){const q=$('#orderSearch').value.toLowerCase();const rows=orders.filter(o=>`${o.id} ${o.status}`.toLowerCase().includes(q));$('#ordersList').innerHTML=rows.length?`<table><thead><tr><th>Order</th><th>Amount</th><th>Status</th><th>Qikink ref</th><th>Action</th></tr></thead><tbody>${rows.map(o=>`<tr><td>${esc(o.id)}<br><span class="muted small">${esc(o.created_at||'')}</span></td><td>₹${Number(o.amount||0).toLocaleString('en-IN')}</td><td>${esc(o.status)}${o.last_error?`<br><span class="error small">${esc(o.last_error)}</span>`:''}</td><td>${esc(o.qikink_order_id||'—')}</td><td>${o.status==='PAID'&&o.last_error?`<button data-retry="${esc(o.id)}">Retry fulfillment</button>`:'—'}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">No matching orders.</p>';$('#ordersList').querySelectorAll('[data-retry]').forEach(b=>b.onclick=()=>retryOrder(b.dataset.retry))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('#orderSearch').oninput=renderOrders;$('#reloadProducts').onclick=loadProducts;$('#reloadOrders').onclick=loadOrders;
+$('#newProduct').onclick=()=>{resetForm();$('#productForm').classList.remove('hidden')};$('#cancelProduct').onclick=()=>$('#productForm').classList.add('hidden');
+function resetForm(){['pId','pName','pCategory','pDescription','pPrice','pImage','pVariants'].forEach(id=>$('#'+id).value='');$('#formTitle').textContent='Add product';$('#productMessage').textContent=''}
+function editProduct(id){const p=products.find(x=>x.id===id);if(!p)return;resetForm();$('#formTitle').textContent='Edit product';$('#pId').value=p.id;$('#pName').value=p.name||'';$('#pCategory').value=p.category||'';$('#pDescription').value=p.description||'';$('#pPrice').value=p.price||'';$('#pImage').value=p.image||'';$('#pVariants').value=(p.variants||[]).map(v=>`${v.size||''}|${v.colour||v.color||''}|${v.sku||''}`).join('\n');$('#productForm').classList.remove('hidden');window.scrollTo({top:0,behavior:'smooth'})}
+$('#saveProduct').onclick=async()=>{const variants=$('#pVariants').value.split('\n').map(s=>s.trim()).filter(Boolean).map(line=>{const [size,colour,sku]=line.split('|').map(s=>s.trim());return{size,colour,sku}});if(!$('#pName').value.trim()||!Number($('#pPrice').value)||!variants.length||variants.some(v=>!v.size||!v.colour||!v.sku)){return $('#productMessage').textContent='Enter product details and valid SIZE|COLOUR|SKU rows.'}const id=$('#pId').value;const body={name:$('#pName').value.trim(),category:$('#pCategory').value.trim(),description:$('#pDescription').value.trim(),price:Number($('#pPrice').value),image:$('#pImage').value.trim(),variants};try{await api(id?`/api/admin/products/${encodeURIComponent(id)}`:'/api/admin/products',{method:id?'PUT':'POST',body:JSON.stringify(body)});$('#productMessage').textContent='Saved';$('#productMessage').className='small success';$('#productForm').classList.add('hidden');await loadProducts()}catch(e){$('#productMessage').textContent=e.message;$('#productMessage').className='small error'}};
+async function deleteProduct(id){if(!confirm('Deactivate this product? Existing order history should remain unchanged.'))return;try{await api('/api/admin/products/'+encodeURIComponent(id),{method:'DELETE'});await loadProducts()}catch(e){msg(e.message,'error')}}
+async function retryOrder(id){if(!confirm('Retry fulfillment for '+id+'? Confirm Qikink did not already accept the order before retrying.'))return;try{await api('/api/admin/orders/'+encodeURIComponent(id)+'/retry',{method:'POST',body:'{}'});msg('Retry request submitted. Refresh orders to check status.','success');await loadOrders()}catch(e){msg(e.message,'error')}}
+init();
+</script></body></html>
