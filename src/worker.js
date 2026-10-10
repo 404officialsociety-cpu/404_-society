@@ -231,7 +231,158 @@ export default {
           return json({ products });
         }
 
+        return json({ 
+        if (path === '/api/admin/products' && request.method === 'POST') {
+          if (!sameSite()) return json({ error: 'Forbidden' }, 403);
+
+          const b = await request.json().catch(() => null);
+
+          if (
+            !b ||
+            !text(b.id, 2, 80) ||
+            !/^[a-zA-Z0-9_-]+$/.test(b.id) ||
+            !text(b.name, 2, 120) ||
+            !Number.isSafeInteger(b.price) ||
+            b.price < 1 ||
+            b.price > 1000000 ||
+            !Array.isArray(b.variants) ||
+            b.variants.length < 1 ||
+            b.variants.length > 100
+          ) {
+            throw bad('Invalid product details or variants.');
+          }
+
+          for (const v of b.variants) {
+            if (
+              !text(v?.size, 1, 20) ||
+              !text(v?.colour, 1, 40) ||
+              !text(v?.sku, 1, 120) ||
+              /^REPLACE-/i.test(v.sku) ||
+              /\s/.test(v.sku)
+            ) {
+              throw bad('Enter the exact Qikink SKU for each size and colour.');
+            }
+          }
+
+          await env.DB.prepare(
+            `INSERT INTO products
+             (id, name, category, description, price, image, active, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`
+          ).bind(
+            b.id,
+            b.name.trim(),
+            String(b.category || '').slice(0, 80),
+            String(b.description || '').slice(0, 1000),
+            b.price,
+            String(b.image || '').slice(0, 2000)
+          ).run();
+
+          for (const v of b.variants) {
+            await env.DB.prepare(
+              `INSERT INTO product_variants
+               (product_id, size, colour, sku, active, updated_at)
+               VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)`
+            ).bind(
+              b.id,
+              v.size.trim(),
+              v.colour.trim(),
+              v.sku.trim()
+            ).run();
+          }
+
+          return json({ ok: true, id: b.id }, 201);
+        }
+
+        if (
+          path.startsWith('/api/admin/products/') &&
+          request.method === 'PUT'
+        ) {
+          if (!sameSite()) return json({ error: 'Forbidden' }, 403);
+
+          const id = path.slice('/api/admin/products/'.length);
+
+          if (!/^[a-zA-Z0-9_-]{2,80}$/.test(id)) {
+            return json({ error: 'Invalid product ID.' }, 400);
+          }
+
+          const b = await request.json().catch(() => null);
+
+          if (
+            !b ||
+            !text(b.name, 2, 120) ||
+            !Number.isSafeInteger(b.price) ||
+            b.price < 1 ||
+            b.price > 1000000 ||
+            !Array.isArray(b.variants) ||
+            b.variants.length < 1 ||
+            b.variants.length > 100
+          ) {
+            throw bad('Invalid product details or variants.');
+          }
+
+          const existing = await env.DB.prepare(
+            'SELECT id FROM products WHERE id = ?'
+          ).bind(id).first();
+
+          if (!existing) {
+            return json({ error: 'Product not found.' }, 404);
+          }
+
+          for (const v of b.variants) {
+            if (
+              !text(v?.size, 1, 20) ||
+              !text(v?.colour, 1, 40) ||
+              !text(v?.sku, 1, 120) ||
+              /^REPLACE-/i.test(v.sku) ||
+              /\s/.test(v.sku)
+            ) {
+              throw bad('Enter the exact Qikink SKU for each variant.');
+            }
+          }
+
+          await env.DB.prepare(
+            `UPDATE products
+             SET name = ?, category = ?, description = ?,
+                 price = ?, image = ?, active = 1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`
+          ).bind(
+            b.name.trim(),
+            String(b.category || '').slice(0, 80),
+            String(b.description || '').slice(0, 1000),
+            b.price,
+            String(b.image || '').slice(0, 2000),
+            id
+          ).run();
+
+          await env.DB.prepare(
+            `UPDATE product_variants
+             SET active = 0, updated_at = CURRENT_TIMESTAMP
+             WHERE product_id = ?`
+          ).bind(id).run();
+
+          for (const v of b.variants) {
+            await env.DB.prepare(
+              `INSERT INTO product_variants
+               (product_id, size, colour, sku, active, updated_at)
+               VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+               ON CONFLICT(product_id, size, colour)
+               DO UPDATE SET sku = excluded.sku,
+                             active = 1,
+                             updated_at = CURRENT_TIMESTAMP`
+            ).bind(
+              id,
+              v.size.trim(),
+              v.colour.trim(),
+              v.sku.trim()
+            ).run();
+          }
+
+          return json({ ok: true, id });
+        }
+
         return json({ error: 'Admin endpoint not found.' }, 404);
+      }, 404);
       }
       
       // Everything below needs a signed-in customer and only ever touches that customer's own data.
