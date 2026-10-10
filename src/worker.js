@@ -186,6 +186,54 @@ export default {
         return new Response('OK');
       }
 
+      // Admin APIs: require a signed Google session and matching ADMIN_EMAIL.
+      if (path.startsWith('/api/admin/')) {
+        const admin = await sessionOf(request, env);
+
+        if (!admin) {
+          return json({ error: 'Please sign in with your administrator Google account.' }, 401);
+        }
+
+        if (
+          !env.ADMIN_EMAIL ||
+          String(admin.email || '').toLowerCase() !==
+            String(env.ADMIN_EMAIL).trim().toLowerCase()
+        ) {
+          return json({ error: 'Administrator access required.' }, 403);
+        }
+
+        if (path === '/api/admin/me' && request.method === 'GET') {
+          return json({
+            admin: { name: admin.name, email: admin.email }
+          });
+        }
+
+        if (path === '/api/admin/products' && request.method === 'GET') {
+          const { results } = await env.DB.prepare(
+            `SELECT id, name, category, description, price, image,
+                    active, created_at, updated_at
+             FROM products ORDER BY created_at DESC`
+          ).all();
+
+          const products = [];
+
+          for (const p of results) {
+            const { results: variants } = await env.DB.prepare(
+              `SELECT size, colour, sku, active
+               FROM product_variants
+               WHERE product_id = ?
+               ORDER BY size, colour`
+            ).bind(p.id).all();
+
+            products.push({ ...p, variants });
+          }
+
+          return json({ products });
+        }
+
+        return json({ error: 'Admin endpoint not found.' }, 404);
+      }
+      
       // Everything below needs a signed-in customer and only ever touches that customer's own data.
       if (path.startsWith('/api/')) {
         const user = await sessionOf(request, env);
